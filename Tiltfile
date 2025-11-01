@@ -18,7 +18,11 @@ if os.name == 'nt':
 local_resource(
   'api-gateway-compile',
   gateway_compile_cmd,
-  deps=['./services/api-gateway', './shared'], labels="compiles")
+  deps=['./services/api-gateway', './shared'],
+  labels="compiles",
+  trigger_mode=TRIGGER_MODE_AUTO)
+#   deps=['./services/api-gateway', './shared'], labels="compiles")
+
 
 
 docker_build_with_restart(
@@ -45,7 +49,7 @@ k8s_resource('api-gateway', port_forwards=8081,
 
 # Uncomment once we have a trip service
 
-trip_compile_cmd = 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/trip-service ./services/trip-service/cmd/main.go'
+trip_compile_cmd = 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/trip-service ./services/trip-service/cmd'
 if os.name == 'nt':
   trip_compile_cmd = './infra/development/docker/trip-build.bat'
 
