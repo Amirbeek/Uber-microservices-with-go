@@ -29,11 +29,7 @@ func (s *HttpHandler) HandleTripPreview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	fare := &domain.RideFareModel{
-		UserId: "2",
-	}
-
-	t, err := s.Service.CreateTrip(ctx, fare)
+	t, err := s.Service.GetRoute(ctx, &reqBody.Pickup, &reqBody.Destination)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "failed to create trip", http.StatusInternalServerError)
