@@ -18,11 +18,7 @@ if os.name == 'nt':
 local_resource(
   'api-gateway-compile',
   gateway_compile_cmd,
-  deps=['./services/api-gateway', './shared'],
-  labels="compiles",
-  trigger_mode=TRIGGER_MODE_AUTO)
-#   deps=['./services/api-gateway', './shared'], labels="compiles")
-
+  deps=['./services/api-gateway', './shared'], labels="compiles")
 
 
 docker_build_with_restart(
@@ -45,7 +41,6 @@ k8s_resource('api-gateway', port_forwards=8081,
              resource_deps=['api-gateway-compile'], labels="services")
 ### End of API Gateway ###
 ### Trip Service ###
-
 
 # Uncomment once we have a trip service
 
@@ -77,8 +72,6 @@ k8s_yaml('./infra/development/k8s/trip-service-deployment.yaml')
 k8s_resource('trip-service', resource_deps=['trip-service-compile'], labels="services")
 
 ### End of Trip Service ###
-
-
 ### Web Frontend ###
 
 docker_build(

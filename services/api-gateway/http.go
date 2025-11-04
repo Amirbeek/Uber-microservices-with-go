@@ -1,11 +1,48 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
+	"log"
 	"net/http"
+	"ride-sharing/services/api-gateway/grpc_clients"
 	"ride-sharing/shared/contracts"
+	pb "ride-sharing/shared/proto/trip"
 )
+
+func handleTripStart(w http.ResponseWriter, r *http.Request) {
+	var body startTripRequest
+
+	err := json.NewDecoder(r.Body).Decode(&body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	defer r.Body.Close()
+
+	tripService, err := grpc_clients.NewTripServiceClient()
+	if err != nil {
+		log.Printf("trip client init error: %v", err)
+		http.Error(w, "trip service unavailable", http.StatusBadGateway)
+		return
+	}
+	defer tripService.Close()
+
+	trip, err := tripService.Client.CreateTrip(r.Context(), &pb.CreateTripRequest{
+		RideFareID: body.RideFareID,
+		UserID:     body.UserID,
+	})
+
+	if err != nil {
+		log.Printf("trip client create error: %v", err)
+		http.Error(w, "trip service unavailable", http.StatusBadGateway)
+		return
+	}
+
+	// Frontend expects a plain object { "tripID": string }
+	writeJSON(w, http.StatusOK, struct{ TripID string `json:"tripID"` }{TripID: trip.GetTripID()})
+
+}
 
 func handleTripPreview(w http.ResponseWriter, r *http.Request) {
 	var reqBody previewTripRequest
@@ -21,25 +58,21 @@ func handleTripPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonBody, err := json.Marshal(reqBody)
+	tripService, err := grpc_clients.NewTripServiceClient()
 	if err != nil {
-		http.Error(w, "failed to encode JSON", http.StatusInternalServerError)
+		log.Printf("trip client init error: %v", err)
+		http.Error(w, "trip service unavailable", http.StatusBadGateway)
 		return
 	}
+	defer tripService.Close()
 
-	resp, err := http.Post("http://trip-service:8083/preview", "application/json", bytes.NewReader(jsonBody))
+	tripPreview, err := tripService.Client.PreviewTrip(r.Context(), reqBody.ToProto())
 	if err != nil {
-		http.Error(w, "failed to make request", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	var tripResp any
-	if err := json.NewDecoder(resp.Body).Decode(&tripResp); err != nil {
-		http.Error(w, "failed to parse JSON data", http.StatusBadRequest)
+		log.Printf("PreviewTrip RPC error: %v", err)
+		http.Error(w, "failed to preview trip", http.StatusBadGateway)
 		return
 	}
 
-	response := contracts.APIResponse{Data: tripResp}
+	response := contracts.APIResponse{Data: tripPreview}
 	writeJSON(w, http.StatusOK, response)
 }

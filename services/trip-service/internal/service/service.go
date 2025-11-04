@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"ride-sharing/services/trip-service/internal/domain"
+	trip "ride-sharing/services/trip-service/pkg/types"
+	tripshared "ride-sharing/shared/proto/trip"
 	"ride-sharing/shared/types"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -26,6 +28,7 @@ func (s *service) CreateTrip(ctx context.Context, fare *domain.RideFareModel) (*
 		UserId:   fare.UserId,
 		Status:   "pending",
 		RideFare: fare,
+		Driver:   &tripshared.TripDriver{},
 	}
 	t, err := s.repo.CreateTrip(ctx, tr)
 	if err != nil {
@@ -34,7 +37,23 @@ func (s *service) CreateTrip(ctx context.Context, fare *domain.RideFareModel) (*
 	return t, nil
 }
 
-func (s *service) GetRoute(ctx context.Context, pickup, destination *types.Coordinate) (*types.OsrmApiResponse, error) {
+func (s *service) GetAndValidateFare(ctx context.Context, fareID, userID string) (*domain.RideFareModel, error) {
+	fare, err := s.repo.GetRideFareByID(ctx, fareID)
+	if err != nil {
+		return nil, err
+	}
+	// Validation user Fare
+	if fare == nil {
+		return nil, fmt.Errorf("fare not found")
+	}
+	if userID != fare.UserId {
+		return nil, fmt.Errorf("fare does not belong to the user")
+	}
+
+	return fare, nil
+}
+
+func (s *service) GetRoute(ctx context.Context, pickup, destination *types.Coordinate) (*trip.OsrmApiResponse, error) {
 	url := fmt.Sprintf("http://router.project-osrm.org/route/v1/driving/%f,%f;%f,%f?overview=full&geometries=geojson",
 		pickup.Longitude, pickup.Latitude, destination.Longitude, destination.Latitude)
 	resp, err := http.Get(url)
@@ -47,10 +66,87 @@ func (s *service) GetRoute(ctx context.Context, pickup, destination *types.Coord
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch route from response %s", err)
 	}
-	var routeResp types.OsrmApiResponse
+	var routeResp trip.OsrmApiResponse
 	if err := json.Unmarshal(body, &routeResp); err != nil {
 		return nil, fmt.Errorf("failed parse json: %s", err)
 	}
 
 	return &routeResp, nil
+}
+
+func (s *service) EstimatePackagesPriceWithRoute(route *trip.OsrmApiResponse) []*domain.RideFareModel {
+	baseFares := getBaseFares()
+
+	estimatedFares := make([]*domain.RideFareModel, len(baseFares))
+	for i, fare := range baseFares {
+		estimatedFares[i] = s.estimateFareRoute(fare, route)
+	}
+	return estimatedFares
+}
+
+func (s *service) GenerateTripFares(ctx context.Context, f []*domain.RideFareModel, route *trip.OsrmApiResponse, userID string) ([]*domain.RideFareModel, error) {
+	fares := make([]*domain.RideFareModel, len(f))
+
+	for i, fare := range f {
+		id := primitive.NewObjectID()
+		fare := &domain.RideFareModel{
+			UserId:          userID,
+			ID:              id,
+			TotalPriceCents: fare.TotalPriceCents,
+			PackageSlug:     fare.PackageSlug,
+		}
+		if err := s.repo.SaveRideFare(ctx, fare); err != nil {
+			return nil, fmt.Errorf("failed to save ride fare: %s", err)
+		}
+		fares[i] = fare
+	}
+
+	return fares, nil
+}
+
+func (s *service) estimateFareRoute(f *domain.RideFareModel, route *trip.OsrmApiResponse) *domain.RideFareModel {
+	// distance
+	// time
+
+	pricingConfing := trip.DefaultPricingConfig()
+	CarPackagePrice := f.TotalPriceCents
+
+	distanceKm := route.Routes[0].Distance
+	durationInMinutes := route.Routes[0].Duration
+
+	// distance
+	distanceFare := distanceKm * pricingConfing.PricePerDistance
+
+	// time
+	timeFare := durationInMinutes * pricingConfing.PricingPerMinute
+
+	// car price
+	totalPrice := CarPackagePrice*timeFare + distanceFare
+
+	return &domain.RideFareModel{
+		TotalPriceCents: totalPrice,
+		PackageSlug:     f.PackageSlug,
+	}
+
+}
+
+func getBaseFares() []*domain.RideFareModel {
+	return []*domain.RideFareModel{
+		{
+			PackageSlug:     "sedan",
+			TotalPriceCents: 450,
+		},
+		{
+			PackageSlug:     "suv",
+			TotalPriceCents: 200,
+		},
+		{
+			PackageSlug:     "van",
+			TotalPriceCents: 400,
+		},
+		{
+			PackageSlug:     "luxury",
+			TotalPriceCents: 1000,
+		},
+	}
 }
