@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"ride-sharing/services/trip-service/internal/domain"
 	trip "ride-sharing/services/trip-service/pkg/types"
+	pbd "ride-sharing/shared/proto/driver"
 	tripshared "ride-sharing/shared/proto/trip"
 	"ride-sharing/shared/types"
 
@@ -94,6 +95,7 @@ func (s *service) GenerateTripFares(ctx context.Context, f []*domain.RideFareMod
 			ID:              id,
 			TotalPriceCents: fare.TotalPriceCents,
 			PackageSlug:     fare.PackageSlug,
+			Route:           route,
 		}
 		if err := s.repo.SaveRideFare(ctx, fare); err != nil {
 			return nil, fmt.Errorf("failed to save ride fare: %s", err)
@@ -149,4 +151,12 @@ func getBaseFares() []*domain.RideFareModel {
 			TotalPriceCents: 1000,
 		},
 	}
+}
+
+func (s *service) GetTripByID(ctx context.Context, id string) (*domain.TripModel, error) {
+	return s.repo.GetTripByID(ctx, id)
+}
+
+func (s *service) UpdateTrip(ctx context.Context, tripID string, status string, driver *pbd.Driver) error {
+	return s.repo.UpdateTrip(ctx, tripID, status, driver)
 }

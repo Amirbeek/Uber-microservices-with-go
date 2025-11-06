@@ -1,6 +1,7 @@
 package main
 
 import (
+	dr "ride-sharing/shared/proto/driver"
 	pb "ride-sharing/shared/proto/trip"
 	"ride-sharing/shared/types"
 )
@@ -34,5 +35,17 @@ func (c *startTripRequest) ToProto() *pb.CreateTripRequest {
 	return &pb.CreateTripRequest{
 		RideFareID: c.RideFareID,
 		UserID:     c.UserID,
+	}
+}
+
+type DriverRequest struct {
+	DriverID    string `json:"driverID"`
+	packageSlug string `json:"packageSlug"`
+}
+
+func (d *DriverRequest) ToProto() *dr.RegisterDriverRequest {
+	return &dr.RegisterDriverRequest{
+		DriverID:    d.DriverID,
+		PackageSlug: d.packageSlug,
 	}
 }

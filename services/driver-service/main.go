@@ -6,22 +6,19 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"ride-sharing/services/trip-service/internal/infrastructure/grpc"
-	"ride-sharing/services/trip-service/internal/infrastructure/repository"
-	"ride-sharing/services/trip-service/internal/service"
 	"ride-sharing/shared/env"
+	message "ride-sharing/shared/messaging"
 	"syscall"
 
 	grpcserver "google.golang.org/grpc"
 )
 
 var (
-	GrpcAddr = env.GetString("GRPC_ADDR", ":9093")
+	GrpcAddr = env.GetString("GRPC_ADDR", ":9092")
 )
 
 func main() {
-	inmemRepo := repository.NewInmemRepository()
-	svc := service.NewTripService(inmemRepo)
+	rabbitmqURI := env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -37,11 +34,22 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-
+	service := NewService()
 	grpcServer := grpcserver.NewServer()
-	grpc.NewGRPCHandler(grpcServer, svc)
+	NewGrpcHandler(grpcServer, service)
 
-	log.Println("Starting gRPC server Trip service on port: " + lis.Addr().String())
+	conn, err := message.NewRabbitMQ(rabbitmqURI)
+	if err != nil {
+		log.Fatalf("failed to connect to rabbitmq: %v", err)
+	}
+	defer conn.Close()
+	consumer := NewTripConsumer(conn, service)
+	go func() {
+		if err := consumer.Listen(); err != nil {
+			log.Fatalf("failed to listen: %v", err)
+		}
+	}()
+	log.Println("Starting gRPC server Driver service on port: " + lis.Addr().String())
 
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
@@ -52,7 +60,7 @@ func main() {
 
 	// wait for shutdown signal
 	<-ctx.Done()
-	log.Println("Shutting down gRPC server Trip service")
+	log.Println("Shutting down gRPC server DriverF service")
 	grpcServer.GracefulStop()
 
 }

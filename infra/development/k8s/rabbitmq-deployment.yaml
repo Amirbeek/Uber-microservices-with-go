@@ -19,19 +19,31 @@ spec:
           ports:
             - containerPort: 5672 # AMQP port
             - containerPort: 15672 # Management UI port
+          # Give RabbitMQ ample time to boot without failing liveness/readiness
+          # Kubernetes will ignore the probes below until startupProbe succeeds
+          startupProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            periodSeconds: 5
+            timeoutSeconds: 30
+            failureThreshold: 120  # ~10 minutes max startup time
+
+          # Once the server is up, ensure TCP is accepting connections
           readinessProbe:
-            exec:
-              command: ["rabbitmq-diagnostics", "check_running"]
-            initialDelaySeconds: 20
-            periodSeconds: 10
-            timeoutSeconds: 15
-            failureThreshold: 3
+            tcpSocket:
+              port: 5672
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12   # ~60s before marking NotReady
+
+          # Restart only if the TCP port becomes unhealthy after start
           livenessProbe:
-            exec:
-              command: ["rabbitmq-diagnostics", "check_running"]
-            initialDelaySeconds: 60
+            tcpSocket:
+              port: 5672
             periodSeconds: 30
-            timeoutSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+
           resources:
             requests:
               memory: "512Mi"
