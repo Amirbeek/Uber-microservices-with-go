@@ -41,6 +41,11 @@ spec:
                 secretKeyRef:
                   name: rabbitmq-credentials
                   key: password
+            - name: STRIPE_WEBHOOK_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stripe-secret
+                  key: stripe-webhook-key
             - name: RABBITMQ_URI
               value: "amqp://$(RABBITMQ_USER):$(RABBITMQ_PASS)@rabbitmq:5672/"
 

@@ -25,7 +25,7 @@ func NewTripConsumer(rabbitmq *messaging.RabbitMQ, service *Service) *TripConsum
 }
 
 func (c *TripConsumer) Listen() error {
-	return c.rabbitmq.ConsumeMessages(messaging.FindAvailableDriverQueue, func(ctx context.Context, msg amqp.Delivery) error {
+return c.rabbitmq.ConsumeMessages(messaging.FindAvailableDriversQueue, func(ctx context.Context, msg amqp.Delivery) error {
 		var tripEvent contracts.AmqpMessage
 		if err := json.Unmarshal(msg.Body, &tripEvent); err != nil {
 			return fmt.Errorf("tripEvent unmarshalling failed: %v", err)
@@ -67,19 +67,19 @@ func (c *TripConsumer) handleFindAndNotifyDriver(ctx context.Context, payload me
 	randomIndex := rand.Intn(len(suitableIDS))
 	suitableDriverID := suitableIDS[randomIndex]
 
-	marchaledEvent, err := json.Marshal(payload)
+	// NOTIFY THE DRIVER about a potential trip
+	marshalledEvent, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 
-	//NOTIFY THE DRIVER about a potential trip
-
 	if err := c.rabbitmq.PublishMessage(ctx, contracts.DriverCmdTripRequest, contracts.AmqpMessage{
 		OwnerID: suitableDriverID,
-		Data:    marchaledEvent,
+		Data:    marshalledEvent,
 	}); err != nil {
 		log.Printf("Failed to publish Driver Notifications: %v", err)
 		return err
 	}
+
 	return nil
 }

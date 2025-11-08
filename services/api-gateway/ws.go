@@ -44,9 +44,11 @@ func handleRidersWebSocket(w http.ResponseWriter, r *http.Request, rabbitmq *mes
 	// Initialize queue consumers
 	queues := []string{
 		messaging.NotifyDriverNoDriversFoundQueue,
-		messaging.NotifyDriverAssignedQueue,
+		messaging.NotifyDriverAssignQueue,
+		messaging.NotifyPaymentSessionCreatedQueue,
 	}
 
+	log.Printf("Rider WS subscribed user=%s to queues=%v", userID, queues)
 	for _, q := range queues {
 		consumer := messaging.NewQueueConsumer(rabbitmq, connManager, q)
 		if err := consumer.Start(); err != nil {
@@ -130,9 +132,10 @@ func handleDriversWebSocket(w http.ResponseWriter, r *http.Request, rabbitmq *me
 	// Initialize queue consumers
 	queues := []string{
 		messaging.DriverCmdTripRequestQueue,
-		messaging.NotifyDriverAssignedQueue,
+		messaging.NotifyDriverAssignQueue,
 	}
 
+	log.Printf("Driver WS subscribed user=%s to queues=%v", userID, queues)
 	for _, q := range queues {
 		consumer := messaging.NewQueueConsumer(rabbitmq, connManager, q)
 		if err := consumer.Start(); err != nil {
@@ -161,11 +164,14 @@ func handleDriversWebSocket(w http.ResponseWriter, r *http.Request, rabbitmq *me
 			// Handle driver location
 			continue
 		case contracts.DriverCmdTripAccept, contracts.DriverCmdTripDecline:
+			log.Printf("Driver WS forwarding type=%s from user=%s", driverMsg.Type, userID)
 			if err := rabbitmq.PublishMessage(ctx, driverMsg.Type, contracts.AmqpMessage{
 				OwnerID: userID,
 				Data:    driverMsg.Data, // pass raw JSON bytes
 			}); err != nil {
 				log.Printf("WebSocket publish error: %v", err)
+			} else {
+				log.Printf("Driver WS forwarded type=%s from user=%s", driverMsg.Type, userID)
 			}
 		default:
 			log.Printf("WebSocket unknown type: %s", driverMsg.Type)

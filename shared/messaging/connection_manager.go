@@ -81,11 +81,17 @@ func (cm *ConnectionManager) SendMessage(id string, message contracts.WSMessage)
 	cm.mutex.RUnlock()
 
 	if !exists {
+		log.Printf("WS Send: connection not found for user %s (type=%s)", id, message.Type)
 		return ErrConnectionNotFound
 	}
 
 	wrapper.mutex.Lock()
 	defer wrapper.mutex.Unlock()
 
-	return wrapper.conn.WriteJSON(message)
+	if err := wrapper.conn.WriteJSON(message); err != nil {
+		log.Printf("WS Send: write failed for user %s (type=%s): %v", id, message.Type, err)
+		return err
+	}
+	log.Printf("WS Send: delivered type=%s to user=%s", message.Type, id)
+	return nil
 }

@@ -153,7 +153,7 @@ func (r *RabbitMQ) setupExchangesAndQueues() error {
 
 	// Queue: find_available_drivers -> trip.event.created, trip.event.driver_not_interested
 	if err := r.declareAndBindQueue(
-		FindAvailableDriverQueue,
+		FindAvailableDriversQueue,
 		[]string{
 			contracts.TripEventCreated,
 			contracts.TripEventDriverNotInterested,
@@ -199,9 +199,39 @@ func (r *RabbitMQ) setupExchangesAndQueues() error {
 
 	// Queue: notify_driver_assign -> trip.event.driver_assigned (consumed by API Gateway/Riders)
 	if err := r.declareAndBindQueue(
-		NotifyDriverAssignedQueue,
+		NotifyDriverAssignQueue,
 		[]string{
 			contracts.TripEventDriverAssigned,
+		},
+		TripExchange,
+	); err != nil {
+		return fmt.Errorf("failed to declare and bind queue: %v", err)
+	}
+
+	if err := r.declareAndBindQueue(
+		PaymentTripResponseQueue,
+		[]string{
+			contracts.PaymentCmdCreateSession,
+		},
+		TripExchange,
+	); err != nil {
+		return fmt.Errorf("failed to declare and bind queue: %v", err)
+	}
+
+	if err := r.declareAndBindQueue(
+		NotifyPaymentSessionCreatedQueue,
+		[]string{
+			contracts.PaymentEventSessionCreated,
+		},
+		TripExchange,
+	); err != nil {
+		return fmt.Errorf("failed to declare and bind queue: %v", err)
+	}
+
+	if err := r.declareAndBindQueue(
+		NotifyPaymentSuccessQueue,
+		[]string{
+			contracts.PaymentEventSessionCreated,
 		},
 		TripExchange,
 	); err != nil {
