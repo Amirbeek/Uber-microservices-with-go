@@ -3,6 +3,7 @@ package grpc_clients
 import (
 	"os"
 	pb "ride-sharing/shared/proto/trip"
+	"ride-sharing/shared/tracing"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -16,14 +17,19 @@ type tripServiceClient struct {
 func NewTripServiceClient() (*tripServiceClient, error) {
 	tripServiceURL := os.Getenv("TRIP_SERVICE_URL")
 	if tripServiceURL == "" {
-		// In-cluster default: use Kubernetes service name and gRPC port
 		tripServiceURL = "trip-service:9093"
 	}
 
-	conn, err := grpc.Dial(tripServiceURL, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	dialOptions := append(
+		tracing.DialOptionsWithTracing(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+
+	conn, err := grpc.NewClient(tripServiceURL, dialOptions...)
 	if err != nil {
 		return nil, err
 	}
+
 	client := pb.NewTripServiceClient(conn)
 
 	return &tripServiceClient{
@@ -32,9 +38,10 @@ func NewTripServiceClient() (*tripServiceClient, error) {
 	}, nil
 }
 
-func (c *tripServiceClient) Close() error {
+func (c *tripServiceClient) Close() {
 	if c.conn != nil {
-		return c.conn.Close()
+		if err := c.conn.Close(); err != nil {
+			return
+		}
 	}
-	return nil
 }

@@ -20,24 +20,6 @@ func NewInmemRepository() *inmemRepository {
 	}
 }
 
-func (r *inmemRepository) CreateTrip(ctx context.Context, trip *domain.TripModel) (*domain.TripModel, error) {
-	r.trips[trip.ID.Hex()] = trip
-
-	return trip, nil
-}
-
-func (r *inmemRepository) SaveRideFare(ctx context.Context, f *domain.RideFareModel) error {
-	r.rideFares[f.ID.Hex()] = f
-	return nil
-}
-
-func (r *inmemRepository) GetRideFareByID(ctx context.Context, id string) (*domain.RideFareModel, error) {
-	if fare, ok := r.rideFares[id]; ok {
-		return fare, nil
-	}
-	return nil, nil
-}
-
 func (r *inmemRepository) GetTripByID(ctx context.Context, id string) (*domain.TripModel, error) {
 	trip, ok := r.trips[id]
 	if !ok {
@@ -62,5 +44,24 @@ func (r *inmemRepository) UpdateTrip(ctx context.Context, tripID string, status 
 			ProfilePicture: driver.ProfilePicture,
 		}
 	}
+	return nil
+}
+
+func (r *inmemRepository) GetRideFareByID(ctx context.Context, id string) (*domain.RideFareModel, error) {
+	fare, exist := r.rideFares[id]
+	if !exist {
+		return nil, fmt.Errorf("fare does not exist with ID: %s", id)
+	}
+
+	return fare, nil
+}
+
+func (r *inmemRepository) CreateTrip(ctx context.Context, trip *domain.TripModel) (*domain.TripModel, error) {
+	r.trips[trip.ID.Hex()] = trip
+	return trip, nil
+}
+
+func (r *inmemRepository) SaveRideFare(ctx context.Context, f *domain.RideFareModel) error {
+	r.rideFares[f.ID.Hex()] = f
 	return nil
 }

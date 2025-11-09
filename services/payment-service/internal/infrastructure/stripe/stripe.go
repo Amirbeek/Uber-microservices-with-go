@@ -2,6 +2,7 @@ package stripe
 
 import (
 	"context"
+	"fmt"
 	"ride-sharing/services/payment-service/internal/domain"
 	"ride-sharing/services/payment-service/pkg/types"
 
@@ -15,14 +16,17 @@ type stripeClient struct {
 
 func NewStripeClient(config *types.PaymentConfig) domain.PaymentProcessor {
 	stripe.Key = config.StripeSecretKey
-	return &stripeClient{config}
+
+	return &stripeClient{
+		config: config,
+	}
 }
 
 func (s *stripeClient) CreatePaymentSession(ctx context.Context, amount int64, currency string, metadata map[string]string) (string, error) {
 	params := &stripe.CheckoutSessionParams{
 		SuccessURL: stripe.String(s.config.SuccessURL),
 		CancelURL:  stripe.String(s.config.CancelURL),
-		Metadata:   metadata, // <-- corrected
+		Metadata: metadata,
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
@@ -40,7 +44,7 @@ func (s *stripeClient) CreatePaymentSession(ctx context.Context, amount int64, c
 
 	result, err := session.New(params)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create a payment session on stripe: %w", err)
 	}
 
 	return result.ID, nil

@@ -1,7 +1,6 @@
 package main
 
 import (
-	dr "ride-sharing/shared/proto/driver"
 	pb "ride-sharing/shared/proto/trip"
 	"ride-sharing/shared/types"
 )
@@ -12,7 +11,7 @@ type previewTripRequest struct {
 	Destination types.Coordinate `json:"destination"`
 }
 
-func (p *previewTripRequest) ToProto() *pb.PreviewTripRequest {
+func (p *previewTripRequest) toProto() *pb.PreviewTripRequest {
 	return &pb.PreviewTripRequest{
 		UserID: p.UserID,
 		StartLocation: &pb.Coordinate{
@@ -31,21 +30,9 @@ type startTripRequest struct {
 	UserID     string `json:"userID"`
 }
 
-func (c *startTripRequest) ToProto() *pb.CreateTripRequest {
+func (c *startTripRequest) toProto() *pb.CreateTripRequest {
 	return &pb.CreateTripRequest{
 		RideFareID: c.RideFareID,
 		UserID:     c.UserID,
-	}
-}
-
-type DriverRequest struct {
-	DriverID    string `json:"driverID"`
-	packageSlug string `json:"packageSlug"`
-}
-
-func (d *DriverRequest) ToProto() *dr.RegisterDriverRequest {
-	return &dr.RegisterDriverRequest{
-		DriverID:    d.DriverID,
-		PackageSlug: d.packageSlug,
 	}
 }

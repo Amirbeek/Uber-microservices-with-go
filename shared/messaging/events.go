@@ -14,6 +14,7 @@ const (
 	PaymentTripResponseQueue         = "payment_trip_response"
 	NotifyPaymentSessionCreatedQueue = "notify_payment_session_created"
 	NotifyPaymentSuccessQueue        = "payment_success"
+	DeadLetterQueue                  = "dead_letter_queue"
 )
 
 type TripEventData struct {
@@ -22,8 +23,8 @@ type TripEventData struct {
 
 type DriverTripResponseData struct {
 	Driver  *pbd.Driver `json:"driver"`
-	TripID  string      `json:"tripId"`
-	RiderID string      `json:"riderId"`
+	TripID  string      `json:"tripID"`
+	RiderID string      `json:"riderID"`
 }
 
 type PaymentEventSessionCreatedData struct {

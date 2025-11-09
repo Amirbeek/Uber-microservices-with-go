@@ -8,10 +8,9 @@ import (
 	"ride-sharing/services/trip-service/internal/domain"
 	"ride-sharing/shared/contracts"
 	"ride-sharing/shared/messaging"
-	"ride-sharing/shared/proto/driver"
-	pb "ride-sharing/shared/proto/trip"
+	pbd "ride-sharing/shared/proto/driver"
 
-	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/rabbitmq/amqp091-go"
 )
 
 type driverConsumer struct {
@@ -27,52 +26,83 @@ func NewDriverConsumer(rabbitmq *messaging.RabbitMQ, service domain.TripService)
 }
 
 func (c *driverConsumer) Listen() error {
-	return c.rabbitmq.ConsumeMessages(messaging.DriverTripResponseQueue, func(ctx context.Context, msg amqp.Delivery) error {
+	return c.rabbitmq.ConsumeMessages(messaging.DriverTripResponseQueue, func(ctx context.Context, msg amqp091.Delivery) error {
 		var message contracts.AmqpMessage
 		if err := json.Unmarshal(msg.Body, &message); err != nil {
-			return fmt.Errorf("message unmarshalling failed: %v", err)
+			log.Printf("Failed to unmarshal message: %v", err)
+			return err
 		}
 
 		var payload messaging.DriverTripResponseData
-
 		if err := json.Unmarshal(message.Data, &payload); err != nil {
-			return fmt.Errorf("message unmarshalling failed: %v", err)
+			log.Printf("Failed to unmarshal message: %v", err)
+			return err
 		}
 
-		log.Printf("driver received message: %+v", payload)
+		log.Printf("driver response received message: %+v", payload)
 
 		switch msg.RoutingKey {
 		case contracts.DriverCmdTripAccept:
 			if err := c.handleTripAccepted(ctx, payload.TripID, payload.Driver); err != nil {
-				log.Printf("error handling trip accepted: %v", err)
+				log.Printf("Failed to handle the trip accept: %v", err)
 				return err
 			}
 		case contracts.DriverCmdTripDecline:
-			if err := c.handleTripDecline(ctx, payload.TripID, payload.RiderID); err != nil {
-				log.Printf("error handling trip decline: %v", err)
+			if err := c.handleTripDeclined(ctx, payload.TripID, payload.RiderID); err != nil {
+				log.Printf("Failed to handle the trip decline: %v", err)
 				return err
 			}
-		default:
-			log.Printf("unknown driver response routing key: %s, payload: %+v", msg.RoutingKey, payload)
+			return nil
 		}
+		log.Printf("unknown trip event: %+v", payload)
 
 		return nil
 	})
 }
 
-func (c *driverConsumer) handleTripAccepted(ctx context.Context, tripID string, driver *driver.Driver) error {
-	// fetch first
+func (c *driverConsumer) handleTripDeclined(ctx context.Context, tripID, riderID string) error {
+	// When a driver declines, we should try to find another driver
+
+	trip, err := c.service.GetTripByID(ctx, tripID)
+	if err != nil {
+		return err
+	}
+
+	newPayload := messaging.TripEventData{
+		Trip: trip.ToProto(),
+	}
+
+	marshalledPayload, err := json.Marshal(newPayload)
+	if err != nil {
+		return err
+	}
+
+	if err := c.rabbitmq.PublishMessage(ctx, contracts.TripEventDriverNotInterested,
+		contracts.AmqpMessage{
+			OwnerID: riderID,
+			Data:    marshalledPayload,
+		},
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *driverConsumer) handleTripAccepted(ctx context.Context, tripID string, driver *pbd.Driver) error {
+	// 1. Fetch the first
 	trip, err := c.service.GetTripByID(ctx, tripID)
 	if err != nil {
 		return err
 	}
 
 	if trip == nil {
-		return fmt.Errorf("trip not found")
+		return fmt.Errorf("Trip was not found %s", tripID)
 	}
 
-	// update the trip
+	// 2. Update the trip
 	if err := c.service.UpdateTrip(ctx, tripID, "accepted", driver); err != nil {
+		log.Printf("Failed to update the trip: %v", err)
 		return err
 	}
 
@@ -81,99 +111,36 @@ func (c *driverConsumer) handleTripAccepted(ctx context.Context, tripID string, 
 		return err
 	}
 
-	// Build a pb.Trip payload so the frontend gets canonical JSON keys (id, userID, driver, selectedFare, route)
-	protoTrip := &pb.Trip{
-		Id:           trip.ID.Hex(),
-		SelectedFare: func() *pb.RideFare { if trip.RideFare != nil { return trip.RideFare.ToProto() }; return nil }(),
-		Route:        func() *pb.Route { if trip.RideFare != nil && trip.RideFare.Route != nil { return trip.RideFare.Route.ToProto() }; return nil }(),
-		Status:       trip.Status,
-		UserID:       trip.UserId,
-		Driver:       trip.Driver,
-	}
-	marshalledTrip, err := json.Marshal(protoTrip)
+	// 3. Driver has been assigned -> publish this event to RB
+	marshalledTrip, err := json.Marshal(trip)
 	if err != nil {
 		return err
 	}
 
-	// Notify the rider that driver has been assigned
-	log.Printf("TripService: publishing driver_assigned for rider=%s trip=%s", trip.UserId, trip.ID.Hex())
+	// Notify the rider that a driver has been assigned
 	if err := c.rabbitmq.PublishMessage(ctx, contracts.TripEventDriverAssigned, contracts.AmqpMessage{
-		OwnerID: trip.UserId,
+		OwnerID: trip.UserID,
 		Data:    marshalledTrip,
 	}); err != nil {
 		return err
 	}
-	log.Printf("TripService: published driver_assigned for rider=%s trip=%s", trip.UserId, trip.ID.Hex())
 
-	// Request Payment Service to create a Stripe Checkout session
-	cmd := messaging.PaymentTripResponseData{
-		TripID:   trip.ID.Hex(),
-		UserID:   trip.UserId,
+	marshalledPayload, err := json.Marshal(messaging.PaymentTripResponseData{
+		TripID:   tripID,
+		UserID:   trip.UserID,
 		DriverID: driver.Id,
-		Amount:   func() float64 { if trip.RideFare != nil { return trip.RideFare.TotalPriceCents }; return 0 }(),
+		Amount:   trip.RideFare.TotalPriceInCents,
 		Currency: "USD",
-	}
-	cmdBytes, err := json.Marshal(cmd)
-	if err != nil {
-		return err
-	}
-	log.Printf("TripService: publishing payment_cmd.create_session for rider=%s trip=%s", trip.UserId, trip.ID.Hex())
-	if err := c.rabbitmq.PublishMessage(ctx, contracts.PaymentCmdCreateSession, contracts.AmqpMessage{
-		OwnerID: trip.UserId,
-		Data:    cmdBytes,
-	}); err != nil {
-		return err
-	}
-	log.Printf("TripService: published payment_cmd.create_session for rider=%s trip=%s", trip.UserId, trip.ID.Hex())
+	})
 
-	return nil
-
-	return nil
-}
-
-func (c *driverConsumer) handleTripDecline(ctx context.Context, tripID, riderID string) error {
-	// When a driver declines, re-dispatch the trip to find another driver
-
-	trip, err := c.service.GetTripByID(ctx, tripID)
-	if err != nil {
-		return err
-	}
-	if trip == nil {
-		return fmt.Errorf("trip not found")
-	}
-
-	// Ensure trip remains open for matching
-	if trip.Status != "pending" {
-		if err := c.service.UpdateTrip(ctx, tripID, "pending", nil); err != nil {
-			return err
-		}
-		trip, err = c.service.GetTripByID(ctx, tripID)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Build full trip payload required by driver-service (needs SelectedFare.PackageSlug)
-	protoTrip := &pb.Trip{
-		Id:           trip.ID.Hex(),
-		SelectedFare: func() *pb.RideFare { if trip.RideFare != nil { return trip.RideFare.ToProto() }; return nil }(),
-		Route:        func() *pb.Route { if trip.RideFare != nil && trip.RideFare.Route != nil { return trip.RideFare.Route.ToProto() }; return nil }(),
-		Status:       trip.Status,
-		UserID:       trip.UserId,
-		Driver:       trip.Driver,
-	}
-
-	payload := messaging.TripEventData{Trip: protoTrip}
-	data, err := json.Marshal(payload)
-	if err != nil {
+	if err := c.rabbitmq.PublishMessage(ctx, contracts.PaymentCmdCreateSession,
+		contracts.AmqpMessage{
+			OwnerID: trip.UserID,
+			Data:    marshalledPayload,
+		},
+	); err != nil {
 		return err
 	}
 
-	if err := c.rabbitmq.PublishMessage(ctx, contracts.TripEventDriverNotInterested, contracts.AmqpMessage{
-		OwnerID: riderID,
-		Data:    data,
-	}); err != nil {
-		return err
-	}
 	return nil
 }

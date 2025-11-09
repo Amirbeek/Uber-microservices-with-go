@@ -3,16 +3,15 @@ load('ext://restart_process', 'docker_build_with_restart')
 
 ### K8s Config ###
 
+# Uncomment to use secrets
 k8s_yaml('./infra/development/k8s/secrets.yaml')
 k8s_yaml('./infra/development/k8s/app-config.yaml')
 
+### End of K8s Config ###
 ### RabbitMQ ###
-
 k8s_yaml('./infra/development/k8s/rabbitmq-deployment.yaml')
 k8s_resource('rabbitmq', port_forwards=['5672', '15672'], labels='tooling')
-
 ### End RabbitMQ ###
-
 ### API Gateway ###
 
 gateway_compile_cmd = 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/api-gateway ./services/api-gateway'
@@ -46,11 +45,9 @@ k8s_resource('api-gateway', port_forwards=8081,
 ### End of API Gateway ###
 ### Trip Service ###
 
-# Uncomment once we have a trip service
-
-trip_compile_cmd = 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/trip-service ./services/trip-service/cmd'
+trip_compile_cmd = 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/trip-service ./services/trip-service/cmd/main.go'
 if os.name == 'nt':
-  trip_compile_cmd = './infra/development/docker/trip-build.bat'
+ trip_compile_cmd = './infra/development/docker/trip-build.bat'
 
 local_resource(
   'trip-service-compile',
@@ -76,11 +73,11 @@ k8s_yaml('./infra/development/k8s/trip-service-deployment.yaml')
 k8s_resource('trip-service', resource_deps=['trip-service-compile', 'rabbitmq'], labels="services")
 
 ### End of Trip Service ###
-
 ### Driver Service ###
+
 driver_compile_cmd = 'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/driver-service ./services/driver-service'
 if os.name == 'nt':
-  driver_compile_cmd = './infra/development/docker/driver-build.bat'
+ driver_compile_cmd = './infra/development/docker/driver-build.bat'
 
 local_resource(
   'driver-service-compile',
@@ -106,8 +103,6 @@ k8s_yaml('./infra/development/k8s/driver-service-deployment.yaml')
 k8s_resource('driver-service', resource_deps=['driver-service-compile', 'rabbitmq'], labels="services")
 
 ### End of Driver Service ###
-
-
 ### Web Frontend ###
 
 docker_build(
@@ -152,3 +147,8 @@ k8s_yaml('./infra/development/k8s/payment-service-deployment.yaml')
 k8s_resource('payment-service', resource_deps=['payment-service-compile', 'rabbitmq'], labels="services")
 
 ### End of Payment Service ###
+
+### Jaeger ###
+k8s_yaml('./infra/development/k8s/jaeger.yaml')
+k8s_resource('jaeger', port_forwards=['16686:16686', '14268:14268'], labels="tooling")
+### End of Jaeger ###

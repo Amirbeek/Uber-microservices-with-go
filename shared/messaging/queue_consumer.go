@@ -58,11 +58,8 @@ func (qc *QueueConsumer) Start() error {
 				Data: payload,
 			}
 
-			log.Printf("QueueConsumer: delivering type=%s to OwnerID=%s via queue=%s", msg.RoutingKey, userID, qc.queueName)
 			if err := qc.connMgr.SendMessage(userID, clientMsg); err != nil {
-				log.Printf("QueueConsumer: failed to send type=%s to user=%s via queue=%s: %v", msg.RoutingKey, userID, qc.queueName, err)
-			} else {
-				log.Printf("QueueConsumer: sent type=%s to user=%s via queue=%s", msg.RoutingKey, userID, qc.queueName)
+				log.Printf("Failed to send message to user %s: %v", userID, err)
 			}
 		}
 	}()

@@ -25,19 +25,27 @@ spec:
               memory: "128Mi"
               cpu: "200m"
           env:
-            - name: RABBITMQ_USER
+            - name: MONGODB_URI
               valueFrom:
                 secretKeyRef:
-                  name: rabbitmq-credentials
-                  key: username
-            - name: RABBITMQ_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: rabbitmq-credentials
-                  key: password
+                  name: mongodb
+                  key: uri
             - name: RABBITMQ_URI
-              value: "amqp://$(RABBITMQ_USER):$(RABBITMQ_PASS)@rabbitmq:5672/"
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: uri
+            - name: OSRM_API
+              valueFrom:
+                secretKeyRef:
+                  name: external-apis
+                  key: osrm
 
+            - name: JAEGER_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  key: JAEGER_ENDPOINT
+                  name: app-config
 ---
 apiVersion: v1
 kind: Service

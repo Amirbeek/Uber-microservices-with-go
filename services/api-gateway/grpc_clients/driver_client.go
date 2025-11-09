@@ -2,35 +2,46 @@ package grpc_clients
 
 import (
 	"os"
-	dr "ride-sharing/shared/proto/driver"
+	pb "ride-sharing/shared/proto/driver"
+	"ride-sharing/shared/tracing"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type driverServiceClient struct {
-	Client dr.DriverServiceClient
+	Client pb.DriverServiceClient
 	conn   *grpc.ClientConn
 }
 
-func NewDriverServiceClient(conn *grpc.ClientConn) (*driverServiceClient, error) {
-	tripServiceURL := os.Getenv("DRIVER_SERVICE_URL")
-	if tripServiceURL == "" {
-		// In-cluster default: use Kubernetes service name and gRPC port
-		tripServiceURL = "driver-service:9092"
+func NewDriverServiceClient() (*driverServiceClient, error) {
+	driverServiceURL := os.Getenv("DRIVER_SERVICE_URL")
+	if driverServiceURL == "" {
+		driverServiceURL = "driver-service:9092"
 	}
-	conn, err := grpc.Dial(tripServiceURL, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	dialOptions := append(
+		tracing.DialOptionsWithTracing(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+
+	conn, err := grpc.NewClient(driverServiceURL, dialOptions...)
 	if err != nil {
 		return nil, err
 	}
-	client := dr.NewDriverServiceClient(conn)
 
-	return &driverServiceClient{client, conn}, nil
+	client := pb.NewDriverServiceClient(conn)
+
+	return &driverServiceClient{
+		Client: client,
+		conn:   conn,
+	}, nil
 }
 
-func (c *driverServiceClient) Close() error {
+func (c *driverServiceClient) Close() {
 	if c.conn != nil {
-		return c.conn.Close()
+		if err := c.conn.Close(); err != nil {
+			return
+		}
 	}
-	return nil
 }

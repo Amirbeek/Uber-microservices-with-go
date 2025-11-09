@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
         - name: driver-service
-          image: ride-sharing/driver-service:latest
-          imagePullPolicy: IfNotPresent   # <-- Add this line
+          image: ride-sharing/driver-service
+          imagePullPolicy: Never
           ports:
             - containerPort: 9092
           resources:
@@ -26,29 +26,26 @@ spec:
               memory: "128Mi"
               cpu: "200m"
           env:
-            - name: RABBITMQ_USER
-              valueFrom:
-                secretKeyRef:
-                  name: rabbitmq-credentials
-                  key: username
-            - name: RABBITMQ_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: rabbitmq-credentials
-                  key: password
             - name: RABBITMQ_URI
-              value: "amqp://$(RABBITMQ_USER):$(RABBITMQ_PASS)@rabbitmq:5672/"
-
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: uri
+            - name: JAEGER_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  key: JAEGER_ENDPOINT
+                  name: app-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: driver-service
 spec:
-  selector:
-    app: driver-service
+  type: ClusterIP
   ports:
     - port: 9092
       name: grpc
       targetPort: 9092
-  type: ClusterIP
+  selector:
+    app: driver-service
